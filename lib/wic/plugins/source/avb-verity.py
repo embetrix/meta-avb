@@ -26,8 +26,6 @@ import os
 import shutil
 import sys
 
-from oe.path import copyhardlinktree
-
 from wic import WicError
 from wic.pluginbase import SourcePlugin
 from wic.misc import get_bitbake_var, exec_cmd, exec_native_cmd
@@ -96,7 +94,14 @@ class AVBVerityPlugin(SourcePlugin):
             if os.path.lexists(new_rootfs):
                 shutil.rmtree(new_rootfs)
 
-            copyhardlinktree(part.rootfs_dir, new_rootfs)
+            try:
+                shutil.copytree(part.rootfs_dir, new_rootfs, copy_function=os.link,
+                                 symlinks=True)
+            except OSError:
+                # Source and destination are on different filesystems.
+                if os.path.lexists(new_rootfs):
+                    shutil.rmtree(new_rootfs)
+                shutil.copytree(part.rootfs_dir, new_rootfs, symlinks=True)
 
             for orig_path in part.exclude_path:
                 path = orig_path
