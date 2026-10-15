@@ -6,8 +6,8 @@ LIC_FILES_CHKSUM = "file://LICENSE;md5=570a9b3749dd0463a1778803b12a6dce"
 SRC_URI = " \
     git://github.com/embetrix/avb-utils.git;name=avb-utils;protocol=https;branch=master \
     "
-# tag: 1.7.0
-SRCREV = "b6d13b7f11ab7ad9f734c481efb7229523917da7"
+# tag: 1.8.0
+SRCREV = "d1fa293349a4f2ea1ed537e60a72de7dd538d7da"
 
 DEPENDS += "libavb python3-avbtool-native"
 
