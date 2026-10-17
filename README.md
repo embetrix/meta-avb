@@ -137,10 +137,20 @@ AVB_ROOT_HASH_SIGN = "1"
 | `AVB_PARTITION_SIZE` | `0` (auto) | Partition size in bytes, 0 = fit to image |
 | `AVB_DATA_DEV` | `/dev/mmcblk0p2` | Block device for dm-verity data and hash (kernel cmdline path only) |
 | `AVB_ROOT_HASH_SIGN` | `0` | Enable PKCS#7 root hash signing and kernel signature verification |
+| `AVB_FEC_ROOTS` | `2` | Reed-Solomon roots for dm-verity forward error correction, 2 to 24 |
 
 When `AVB_ROOT_HASH_SIGN` is set to `1`, the root hash is signed with the AVB key and
 the X.509 certificate is embedded in the kernel trusted keyring. The kernel patches for
 `root_hash_sig_hex` are also applied. Set to `0` to disable root has signature verification.
+
+Every signed image carries forward error correction data after its hash tree, and
+the dm-verity table names it, so the kernel repairs a bounded number of corrupt
+blocks instead of failing the read. `AVB_FEC_ROOTS` sets how many: each 255-byte
+codeword corrects up to `roots / 2` bad bytes, costing `roots / (255 - roots)` of
+the covered size, so `2` repairs one corrupt 4 KiB block per interleave group for
+0.8 % and `24` repairs twelve for 10.4 %. Parity is read only after verification
+has already failed, so the choice affects space, not read speed. Needs
+`CONFIG_DM_VERITY_FEC`, which `dm-verity.cfg` enables.
 
 ## Tested Machines
 

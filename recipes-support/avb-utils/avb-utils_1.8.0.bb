@@ -4,12 +4,17 @@ LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=570a9b3749dd0463a1778803b12a6dce"
 
 SRC_URI = " \
-    git://github.com/embetrix/avb-utils.git;name=avb-utils;protocol=https;branch=master \
+    git://github.com/cwcagilent/avb-utils.git;name=avb-utils;protocol=https;branch=master \
     "
-# tag: 1.8.0
-SRCREV = "4e75d749df4878acbe959b8b6b106bd894e75bcd"
+# 1.8.0 (d1fa2933) plus the FEC series, from the fork carrying it until
+# upstream takes the series. Not yet tagged.
+SRCREV = "3b962b3b8406cc384d596ba992d3f10c1bf9fd82"
 
 DEPENDS += "libavb python3-avbtool-native"
+# avbtool shells out to fec for the dm-verity parity avb_sign now always writes.
+# This reaches only avb-utils-native's own sysroot; image recipes get it through
+# avb-verity.bbclass, because OE stages direct DEPENDS only.
+DEPENDS:append:class-native = " fec-native"
 
 inherit cmake pkgconfig
 
