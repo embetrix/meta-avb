@@ -194,15 +194,17 @@ class AVBVerityPlugin(SourcePlugin):
                     % (algorithm, part_name))
 
         avb_output = os.path.join(cr_workdir, "avb-verity-output.img")
+        fec_roots = get_bitbake_var("AVB_FEC_ROOTS") or "2"
 
         avb_cmd = ("avb_sign "
                    "--image %s "
                    "--output %s "
                    "--key %s "
                    "--partition-name %s "
-                   "--algorithm %s"
+                   "--algorithm %s "
+                   "--fec-roots %s"
                    % (rootfs_img, avb_output, sign_key,
-                      part_name, algorithm))
+                      part_name, algorithm, fec_roots))
 
         avb_root_hash_sign = get_bitbake_var("AVB_ROOT_HASH_SIGN") or ""
         if avb_root_hash_sign == "1":

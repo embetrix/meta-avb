@@ -13,9 +13,9 @@ do_install() {
     if [ -z "${AVB_SIGN_KEY}" ] || [ ! -f "${AVB_SIGN_KEY}" ]; then
         bbfatal "AVB_SIGN_KEY not found: ${AVB_SIGN_KEY}"
     fi
-    avbtool extract_public_key --key "${AVB_SIGN_KEY}" --output ${WORKDIR}/avb_pubkey.bin
+    avbtool extract_public_key --key "${AVB_SIGN_KEY}" --output ${T}/avb_pubkey.bin
     install -d ${D}${sysconfdir}/avb
-    install -m 0644 ${WORKDIR}/avb_pubkey.bin ${D}${sysconfdir}/avb/
+    install -m 0644 ${T}/avb_pubkey.bin ${D}${sysconfdir}/avb/
 }
 
 do_install[vardeps] += "AVB_SIGN_KEY"

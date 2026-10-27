@@ -8,10 +8,12 @@
 #   for it and set up dm-verity via dmsetup at runtime.
 inherit image_types
 
+# avb-utils-native carries avb_sign and avbtool, and pulls in fec-native for
+# the fec tool avbtool shells out to.
 DEPENDS += "avb-utils-native"
 CONVERSIONTYPES += "avbverity"
 
-WICVARS:append = " AVB_SIGN_KEY AVB_ALGORITHM AVB_HASH_ALGORITHM AVB_ROOT_HASH_SIGN AVB_X509"
+WICVARS:append = " AVB_SIGN_KEY AVB_ALGORITHM AVB_HASH_ALGORITHM AVB_ROOT_HASH_SIGN AVB_X509 AVB_FEC_ROOTS"
 
 # Default AVB settings
 AVB_ALGORITHM ?= "SHA256_RSA4096"
@@ -19,6 +21,13 @@ AVB_HASH_ALGORITHM ?= "sha256"
 AVB_PARTITION_NAME ?= "rootfs"
 
 AVB_ROOT_HASH_SIGN ?= "0"
+
+# Reed-Solomon roots for the dm-verity forward error correction data that is
+# written after the hash tree. dm-verity repairs up to roots/2 corrupt blocks
+# per 255-block interleave group, at roots/(255-roots) extra space, and accepts
+# 2 to 24. Parity is only read once verification has already failed, so this
+# costs space, not read speed.
+AVB_FEC_ROOTS ?= "2"
 
 # Partition size for avbtool (bytes):  Default 0 = auto-size the partition
 # to fit the image + hashtree + footer exactly.  Override to set an explicit
@@ -57,7 +66,8 @@ avbverity_setup() {
         --key    "${AVB_SIGN_KEY}" \
         ${CERT_ARGS} \
         --partition-name "${AVB_PARTITION_NAME}" \
-        --algorithm "${AVB_ALGORITHM}"
+        --algorithm "${AVB_ALGORITHM}" \
+        --fec-roots "${AVB_FEC_ROOTS}"
 
     generate_verity_cmdline "${IMAGE_OUT}"
 
@@ -70,8 +80,9 @@ sign_root_hash() {
     X509_CERT=$3
 
     ROOT_HASH=$(echo "${DM_TABLE}" | awk '{print $12}')
-    ROOTHASH_FILE="${WORKDIR}/roothash.txt"
-    ROOTHASH_SIG="${WORKDIR}/roothash.txt.signed"
+    # Per-hash names for the same reason as PUBKEY above: parallel conversions.
+    ROOTHASH_FILE="${T}/roothash.${ROOT_HASH}.txt"
+    ROOTHASH_SIG="${ROOTHASH_FILE}.signed"
     printf '%s' "${ROOT_HASH}" > "${ROOTHASH_FILE}"
 
     openssl cms -sign -nocerts -noattr -binary \
@@ -86,21 +97,35 @@ generate_verity_cmdline() {
     IMAGE=$1
     SIG_ARGS=""
 
-    PUBKEY="${WORKDIR}/avb_pubkey.bin"
+    # Per-image name: every do_image_<type> conversion shares one T and the
+    # tasks run in parallel, so a fixed filename here is a read/write race.
+    PUBKEY="${T}/avb_pubkey.$(basename "${IMAGE}").bin"
     avbtool extract_public_key --key "${AVB_SIGN_KEY}" --output "${PUBKEY}"
 
     DM_TABLE=$(avb_verify -n -t -d "${IMAGE}" -k "${PUBKEY}")
 
     if [ "${AVB_ROOT_HASH_SIGN}" = "1" ]; then
         SIG_HEX=$(sign_root_hash "${DM_TABLE}" "${AVB_SIGN_KEY}" "${AVB_X509}")
-        SIG_ARGS="2 root_hash_sig_hex ${SIG_HEX}"
+        SIG_ARGS="root_hash_sig_hex ${SIG_HEX}"
     fi
 
-    # dm table from avb_verify: 0 <sectors> verity <ver> <dev> <dev> <dbs> <hbs> <nblk> <hstart> <alg> <root_hash> <salt> [...]
+    # dm table from avb_verify: 0 <sectors> verity <ver> <dev> <dev> <dbs> <hbs> <nblk> <hstart> <alg> <root_hash> <salt> [<nopt> <opt>...]
     # dm-mod.create format: <name>,<uuid>,<minor>,<flags>,<start> <size> <target_type> <target_args>
+    # Of the optional arguments, the FEC group is kept and pointed at the data
+    # device; root_hash_sig_key_desc is dropped because on the cmdline path the
+    # signature travels inline as root_hash_sig_hex instead. The count is
+    # recomputed from what is actually emitted.
     CMDLINE=$(echo "${DM_TABLE}" | awk -v ddev="${AVB_DATA_DEV}" -v hdev="${AVB_DATA_DEV}" -v sigargs="${SIG_ARGS}" '{
-        printf "dm-mod.create=\"verity,,0,ro,0 %s verity %s %s %s %s %s %s %s %s %s %s %s\" root=/dev/dm-0 ro\n",
-            $2, $4, ddev, hdev, $7, $8, $9, $10, $11, $12, $13, sigargs
+        opt = ""; nopt = 0
+        for (i = 15; i <= NF; i++) {
+            if ($i == "root_hash_sig_key_desc") { i++; continue }
+            if ($i == "use_fec_from_device") { opt = opt " " $i " " ddev; i++; nopt += 2; continue }
+            opt = opt " " $i; nopt++
+        }
+        if (sigargs != "") { opt = opt " " sigargs; nopt += 2 }
+        if (nopt > 0) opt = " " nopt opt
+        printf "dm-mod.create=\"verity,,0,ro,0 %s verity %s %s %s %s %s %s %s %s %s %s%s\" root=/dev/dm-0 ro\n",
+            $2, $4, ddev, hdev, $7, $8, $9, $10, $11, $12, $13, opt
     }')
 
     install -d "${DEPLOY_DIR_IMAGE}"
