@@ -18,4 +18,6 @@ do_install() {
     install -m 0644 ${T}/avb_pubkey.bin ${D}${sysconfdir}/avb/
 }
 
+# Rebuild the public key when the signing key changes at the same path
+do_install[file-checksums] += "${AVB_SIGN_KEY}:True"
 do_install[vardeps] += "AVB_SIGN_KEY"
